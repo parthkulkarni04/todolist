@@ -16,7 +16,7 @@ import '@aws-amplify/ui-react/styles.css';
 import awsExports from './aws-exports';
 
 // Imports the Quiz component from Quiz.js for use in this file.
-import Quiz from './Quiz';
+import Todo from './Todo';
 
 // Configures the Amplify library with the settings from aws-exports.js, which includes all the AWS service configurations for this project.
 Amplify.configure(awsExports);
@@ -27,22 +27,29 @@ function App() {
       <Authenticator>
         {({ signOut }) => (
           <main>
-            <header className='App-header'>
+            <div 
+            >
               {/* Quiz Component */}
-              <Quiz />
               {/* Sign Out Button */}
               <button 
                 onClick={signOut} 
-                style={{ 
-                  margin: '20px', 
-                  fontSize: '0.8rem', 
-                  padding: '5px 10px', 
-                  marginTop: '20px'
+                style={{
+                  position: 'absolute',  // Makes the button float at the top
+                  top: '10px',            // Distance from top
+                  right: '10px',          // Aligns it to the right
+                  fontSize: '0.7rem',     // Smaller text size
+                  padding: '4px 8px',     // Smaller padding
+                  backgroundColor: '#ff6347', // Custom background color (optional)
+                  color: 'white',         // Text color
+                  border: 'none',         // No border
+                  borderRadius: '4px',    // Rounded corners
+                  cursor: 'pointer'       // Pointer on hover
                 }}
               >
                 Sign Out
               </button>
-            </header>
+            </div>
+            <Todo />
           </main>
         )}
       </Authenticator>
