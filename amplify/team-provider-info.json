@@ -16,5 +16,26 @@
         "ccgroup88393a935": {}
       }
     }
+  },
+  "parthkk": {
+    "awscloudformation": {
+      "AuthRoleName": "amplify-ccgroup8-parthkk-3fc6e-authRole",
+      "UnauthRoleArn": "arn:aws:iam::314146315849:role/amplify-ccgroup8-parthkk-3fc6e-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::314146315849:role/amplify-ccgroup8-parthkk-3fc6e-authRole",
+      "Region": "us-east-1",
+      "DeploymentBucketName": "amplify-ccgroup8-parthkk-3fc6e-deployment",
+      "UnauthRoleName": "amplify-ccgroup8-parthkk-3fc6e-unauthRole",
+      "StackName": "amplify-ccgroup8-parthkk-3fc6e",
+      "StackId": "arn:aws:cloudformation:us-east-1:314146315849:stack/amplify-ccgroup8-parthkk-3fc6e/32459c20-879e-11ef-9698-1236c4850f23",
+      "AmplifyAppId": "d1btlnisivrc4"
+    },
+    "categories": {
+      "auth": {
+        "ccgroup88393a935": {}
+      },
+      "api": {
+        "ccgroup8": {}
+      }
+    }
   }
 }

@@ -4,6 +4,15 @@ import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "./components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select";
+import { generateClient } from 'aws-amplify/api'
+import { listTasks } from './graphql/queries';
+import { createTask, updateTask, deleteTask as deleteTaskMutation } from './graphql/mutations';
+import {Amplify} from 'aws-amplify';
+
+import config from './amplifyconfiguration.json';
+Amplify.configure(config);
+
+const client = generateClient();
 
 const Todo = () => {
   const [tasks, setTasks] = useState([]);
@@ -12,6 +21,7 @@ const Todo = () => {
   const [filterPriority, setFilterPriority] = useState('all');
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   // TaskForm state
   const [taskText, setTaskText] = useState('');
@@ -22,6 +32,7 @@ const Todo = () => {
   useEffect(() => {
     const storedTasks = JSON.parse(localStorage.getItem('tasks')) || [];
     setTasks(storedTasks);
+    
   }, []);
 
   useEffect(() => {
@@ -36,42 +47,127 @@ const Todo = () => {
     setEditingTask(null);
   };
 
-  const handleTaskSubmit = (e) => {
-    e.preventDefault();
-    const newTask = {
-      id: editingTask ? editingTask.id : Date.now(),
-      text: taskText,
-      category: taskCategory,
-      dueDate: taskDueDate,
-      priority: taskPriority,
-      completed: editingTask ? editingTask.completed : false
-    };
-    
-    if (editingTask) {
-      setTasks(tasks.map(task => task.id === editingTask.id ? newTask : task));
-    } else {
-      setTasks([...tasks, newTask]);
+  useEffect(() => {
+    fetchTasks();
+  }, []);
+
+  // Function to fetch tasks from DynamoDB
+  async function fetchTasks() {
+    try {
+      // GraphQL query to get all tasks for the current user
+      const taskData = await client.graphql(
+        {query: listTasks,
+        authMode: 'userPool'});
+      const taskList = taskData.data.listTasks.items;
+      setTasks(taskList);
+      setIsLoading(true);
+    } catch (err) {
+      console.error('Error fetching tasks:', err);
+      setIsLoading(false);
     }
-    
-    resetTaskForm();
-    setIsAddTaskOpen(false);
+  }
+
+  // Function to handle task creation/updating
+  const handleTaskSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      if (editingTask) {
+        // If editing, update existing task
+        const updateDetails = {
+          id: editingTask.id,
+          text: taskText,
+          category: taskCategory,
+          dueDate: taskDueDate,
+          priority: taskPriority,
+          completed: editingTask.completed
+        };
+        await client.graphql( { 
+          query: updateTask,
+          variables: {
+            input: {
+              id: updateDetails.id,
+              text: updateDetails.text,
+              category: updateDetails.category,
+              dueDate: updateDetails.dueDate,
+              priority: updateDetails.priority,
+              completed: updateDetails.completed
+            }
+          },
+        authMode: 'userPool'
+      });
+      } else {
+        // If new task, create it
+ 
+        await client.graphql({ 
+          query: createTask,
+          variables :{
+            input: {
+              text: taskText,
+              category: taskCategory,
+              dueDate: taskDueDate || null,
+              priority: taskPriority,
+              completed: false
+          }},
+        authMode: 'userPool'
+      });
+      }
+      fetchTasks(); // Refresh the task list
+      resetTaskForm();
+      setIsAddTaskOpen(false);
+    } catch (err) {
+      console.error('Error saving task:', err);
+    }
   };
 
-  const deleteTask = (id) => {
-    setTasks(tasks.filter(task => task.id !== id));
+  // Function to delete a task
+  const deleteTask = async (task) => {
+    try {
+      await client.graphql({ 
+        query: deleteTaskMutation,
+        variables: {
+          input: task.id,
+          _version: task._version 
+        },
+      authMode: 'userPool'
+    });
+      fetchTasks(); // Refresh the task list
+    } catch (err) {
+      console.error('Error deleting task:', err);
+    }
   };
 
-  const toggleTask = (id) => {
-    setTasks(tasks.map(task => 
-      task.id === id ? { ...task, completed: !task.completed } : task
-    ));
+  // Function to toggle task completiond
+  const toggleTask = async (task) => {
+    try {
+      const updatedTask = {
+        id: task.id,
+        text: task.text,
+        category: task.category,
+        dueDate: task.dueDate || null,
+        priority: task.priority,
+        completed: !task.completed
+      };
+      
+      await client.graphql({ 
+        query: updateTask,
+        variables: {
+          input: updatedTask
+        },
+        authMode: 'userPool'
+      });
+      
+      fetchTasks(); // Refresh task list
+    } catch (err) {
+      console.error('Error toggling task:', err);
+    }
   };
-
+  
+  
   const startEditTask = (task) => {
     setEditingTask(task);
     setTaskText(task.text);
     setTaskCategory(task.category);
-    setTaskDueDate(task.dueDate);
+    setTaskDueDate(task.dueDazte);
     setTaskPriority(task.priority);
     setIsAddTaskOpen(true);
   };
@@ -246,7 +342,7 @@ const Todo = () => {
                   <Button 
                     variant="ghost"
                     size="icon"
-                    onClick={() => deleteTask(task.id)}
+                    onClick={() => deleteTask(task.id, task._version)}
                     className="text-red-500 hover:text-red-600"
                   >
                     <Trash2 size={20} />

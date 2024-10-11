@@ -1,0 +1,11 @@
+type Task @model @auth(rules: [{ allow: owner }]) {
+  id: ID!                   # Unique identifier for the task
+  text: String            # Task description
+  category: String        # Task category (personal, work, etc.)
+  dueDate: String         # Optional due date
+  priority: String        # Task priority level
+  completed: Boolean      # Task completion status
+  owner: String          # User ID of task owner
+  createdAt: AWSDateTime! # Timestamp of creation
+  updatedAt: AWSDateTime! # Timestamp of last update
+}

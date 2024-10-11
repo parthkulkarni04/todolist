@@ -1,0 +1,11 @@
+{
+  "AppSyncApiName": "ccgroup8",
+  "DynamoDBBillingMode": "PAY_PER_REQUEST",
+  "DynamoDBEnableServerSideEncryption": false,
+  "AuthCognitoUserPoolId": {
+    "Fn::GetAtt": [
+      "authccgroup88393a935",
+      "Outputs.UserPoolId"
+    ]
+  }
+}
