@@ -8,6 +8,7 @@ import { generateClient } from 'aws-amplify/api'
 import { listTasks } from './graphql/queries';
 import { createTask, updateTask, deleteTask as deleteTaskMutation } from './graphql/mutations';
 import {Amplify} from 'aws-amplify';
+import LexChat from 'react-lex';
 
 import config from './amplifyconfiguration.json';
 Amplify.configure(config);
@@ -355,12 +356,22 @@ const Todo = () => {
       </div>
       
       {/* AI Chatbot Button */}
-      <Button
+      {/* <Button
         className="fixed bottom-4 right-4 bg-indigo-500 hover:bg-indigo-600 text-white rounded-full p-4 shadow-lg"
         onClick={() => alert('AI Chatbot functionality not implemented')}
       >
         <MessageCircle size={24} />
-      </Button>
+      </Button> */}
+      <div className='bg-indigo-200 p-30'>
+      <LexChat
+                botName="ToDoMAN" // replace with your bot name
+                placeholder="Type a message..."
+                className = "bg-indigo-500 p-20 w-10"
+                style ={{ position: 'absolute', bottom: '20px', right: '20px', padding: '5rem' }}
+                height="430px"
+                headerText="Chat with your tasks"
+            />
+      </div>
     </div>
   );
 };
