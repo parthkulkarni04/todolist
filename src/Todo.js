@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, Check, Edit, Calendar, MessageCircle } from 'lucide-react';
+import { Trash2, Check, Edit, Calendar } from 'lucide-react';
 import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "./components/ui/dialog";
@@ -8,7 +8,7 @@ import { generateClient } from 'aws-amplify/api'
 import { listTasks } from './graphql/queries';
 import { createTask, updateTask, deleteTask as deleteTaskMutation } from './graphql/mutations';
 import {Amplify} from 'aws-amplify';
-import LexChat from 'react-lex';
+import LexChatbot from './LexChatbot';
 
 import config from './amplifyconfiguration.json';
 Amplify.configure(config);
@@ -362,16 +362,7 @@ const Todo = () => {
       >
         <MessageCircle size={24} />
       </Button> */}
-      <div className='bg-indigo-200 p-30'>
-      <LexChat
-                botName="ToDoMAN" // replace with your bot name
-                placeholder="Type a message..."
-                className = "bg-indigo-500 p-20 w-10"
-                style ={{ position: 'absolute', bottom: '20px', right: '20px', padding: '5rem' }}
-                height="430px"
-                headerText="Chat with your tasks"
-            />
-      </div>
+<LexChatbot onTaskCreated={fetchTasks} />
     </div>
   );
 };
