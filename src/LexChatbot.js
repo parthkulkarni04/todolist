@@ -1,26 +1,46 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageCircle, Send, X } from 'lucide-react';
+import { MessageCircle, Send, X, Mic, MicOff } from 'lucide-react';
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { createTask } from './graphql/mutations';
 import { generateClient } from 'aws-amplify/api';
 import { LexRuntimeV2Client, RecognizeTextCommand } from "@aws-sdk/client-lex-runtime-v2";
+import { 
+  TranscribeClient, 
+  StartTranscriptionJobCommand,
+  GetTranscriptionJobCommand 
+} from "@aws-sdk/client-transcribe";
+import { 
+  S3Client, 
+  PutObjectCommand,
+  GetObjectCommand 
+} from "@aws-sdk/client-s3";
 import { fetchAuthSession } from 'aws-amplify/auth';
 
 const client = generateClient();
 
 const LexChatbot = ({ onTaskCreated }) => {
+  // State management
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const messagesEndRef = useRef(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState(null);
   const [lexClient, setLexClient] = useState(null);
+  const [transcribeClient, setTranscribeClient] = useState(null);
+  const [s3Client, setS3Client] = useState(null);
+  const [recordingError, setRecordingError] = useState(null);
+  
+  const messagesEndRef = useRef(null);
+  const audioChunks = useRef([]);
 
+  // Initialize AWS clients
   useEffect(() => {
-    initializeLexClient();
+    initializeAWSClients();
   }, []);
 
+  // Scroll to bottom effect
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -29,19 +49,217 @@ const LexChatbot = ({ onTaskCreated }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const initializeLexClient = async () => {
+  const initializeAWSClients = async () => {
     try {
       const { credentials } = await fetchAuthSession();
       
-      const client = new LexRuntimeV2Client({
+      const lexClientInstance = new LexRuntimeV2Client({
         region: process.env.REACT_APP_AWS_REGION,
         credentials: credentials
       });
       
-      setLexClient(client);
+      const transcribeClientInstance = new TranscribeClient({
+        region: process.env.REACT_APP_AWS_REGION,
+        credentials: credentials
+      });
+
+      const s3ClientInstance = new S3Client({
+        region: process.env.REACT_APP_AWS_REGION,
+        credentials: credentials
+      });
+      
+      setLexClient(lexClientInstance);
+      setTranscribeClient(transcribeClientInstance);
+      setS3Client(s3ClientInstance);
     } catch (error) {
-      console.error('Error initializing Lex client:', error);
+      console.error('Error initializing AWS clients:', error);
+      addMessage("There was an error initializing the chat service. Please try again later.", 'bot');
     }
+  };
+
+  // Voice recording functions
+  const startRecording = async () => {
+    try {
+      setRecordingError(null);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream, { 
+        mimeType: 'audio/webm;codecs=opus'
+      });
+      
+      audioChunks.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunks.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        try {
+          const audioBlob = new Blob(audioChunks.current, { 
+            type: 'audio/webm;codecs=opus' 
+          });
+          await handleAudioInput(audioBlob);
+        } catch (error) {
+          console.error('Error processing recording:', error);
+          setRecordingError('Error processing recording');
+          addMessage("Sorry, there was an error processing your recording. Please try again.", 'bot');
+        }
+      };
+
+      recorder.onerror = (event) => {
+        console.error('Recording error:', event.error);
+        setRecordingError(event.error.message);
+        addMessage("There was an error with the recording. Please try again.", 'bot');
+      };
+
+      recorder.start(1000); // Collect data in 1-second chunks
+      setMediaRecorder(recorder);
+      setIsRecording(true);
+      addMessage("Listening... Click the microphone button again to stop.", 'bot');
+    } catch (error) {
+      console.error('Error accessing microphone:', error);
+      setRecordingError('Error accessing microphone');
+      addMessage("Unable to access microphone. Please check your permissions.", 'bot');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorder && isRecording) {
+      mediaRecorder.stop();
+      mediaRecorder.stream.getTracks().forEach(track => track.stop());
+      setIsRecording(false);
+      addMessage("Processing your voice input...", 'bot');
+    }
+  };
+
+  const handleAudioInput = async (audioBlob) => {
+    setIsLoading(true);
+    try {
+      const transcribedText = await transcribeAudio(audioBlob);
+      if (transcribedText && transcribedText.trim()) {
+        addMessage(transcribedText, 'user');
+        const lexResponse = await sendToLex(transcribedText);
+        await handleLexResponse(lexResponse);
+      } else {
+        addMessage("Sorry, I couldn't understand the audio. Please try again.", 'bot');
+      }
+    } catch (error) {
+      console.error('Error processing audio:', error);
+      addMessage("Sorry, there was an error processing your voice input.", 'bot');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const uploadToS3 = async (audioBlob) => {
+    const fileName = `audio-${Date.now()}.webm`;
+    
+    try {
+      const command = new PutObjectCommand({
+        Bucket: process.env.REACT_APP_S3_BUCKET,
+        Key: fileName,
+        Body: audioBlob,
+        ContentType: 'audio/webm;codecs=opus'
+      });
+
+      await s3Client.send(command);
+      return `s3://${process.env.REACT_APP_S3_BUCKET}/${fileName}`;
+    } catch (error) {
+      console.error('Error uploading to S3:', error);
+      throw error;
+    }
+  };
+
+  const transcribeAudio = async (audioBlob) => {
+    try {
+      const s3Uri = await uploadToS3(audioBlob);
+      const jobName = `task-transcription-${Date.now()}`;
+      
+      const command = new StartTranscriptionJobCommand({
+        TranscriptionJobName: jobName,
+        Media: { MediaFileUri: s3Uri },
+        MediaFormat: 'webm',
+        LanguageCode: 'en-US',
+        Settings: {
+          ShowSpeakerLabels: false,
+          EnableAutomaticPunctuation: true
+        }
+      });
+
+      await transcribeClient.send(command);
+      const transcribedText = await pollTranscriptionJob(jobName);
+      return transcribedText;
+    } catch (error) {
+      console.error('Transcription error:', error);
+      throw error;
+    }
+  };
+
+  const pollTranscriptionJob = async (jobName) => {
+    const maxAttempts = 60; // Maximum number of polling attempts (5 minutes total with 5-second intervals)
+    const pollingInterval = 5000; // 5 seconds between attempts
+    let attempts = 0;
+
+    const getTranscriptionJob = async () => {
+      const command = new GetTranscriptionJobCommand({
+        TranscriptionJobName: jobName
+      });
+      
+      try {
+        const response = await transcribeClient.send(command);
+        return response.TranscriptionJob;
+      } catch (error) {
+        console.error('Error getting transcription job status:', error);
+        throw error;
+      }
+    };
+
+    const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    const getTranscriptionText = async (transcriptFileUri) => {
+      try {
+        const url = new URL(transcriptFileUri);
+        const bucket = url.hostname.split('.')[0];
+        const key = url.pathname.substr(1);
+
+        const command = new GetObjectCommand({
+          Bucket: bucket,
+          Key: key
+        });
+
+        const response = await s3Client.send(command);
+        const transcript = await response.Body.transformToString();
+        const transcriptJson = JSON.parse(transcript);
+        
+        return transcriptJson.results.transcripts[0].transcript;
+      } catch (error) {
+        console.error('Error getting transcription results:', error);
+        throw error;
+      }
+    };
+
+    while (attempts < maxAttempts) {
+      const job = await getTranscriptionJob();
+      
+      switch (job.TranscriptionJobStatus) {
+        case 'COMPLETED':
+          return await getTranscriptionText(job.Transcript.TranscriptFileUri);
+          
+        case 'FAILED':
+          throw new Error(`Transcription job failed: ${job.FailureReason}`);
+          
+        case 'IN_PROGRESS':
+          await delay(pollingInterval);
+          attempts++;
+          break;
+          
+        default:
+          throw new Error(`Unknown job status: ${job.TranscriptionJobStatus}`);
+      }
+    }
+
+    throw new Error('Transcription timed out');
   };
 
   const createNewTask = async (taskDetails) => {
@@ -82,7 +300,7 @@ const LexChatbot = ({ onTaskCreated }) => {
         botId: process.env.REACT_APP_LEX_BOT_ID,
         botAliasId: process.env.REACT_APP_LEX_BOT_ALIAS_ID,
         localeId: "en_US",
-        sessionId: "test-session",
+        sessionId: `session-${Date.now()}`,
         text: message
       };
 
@@ -186,7 +404,7 @@ const LexChatbot = ({ onTaskCreated }) => {
               {isLoading && (
                 <div className="flex justify-start">
                   <div className="bg-gray-100 text-gray-800 rounded-lg p-3">
-                    Thinking...
+                    {isRecording ? 'Recording...' : 'Processing...'}
                   </div>
                 </div>
               )}
@@ -207,7 +425,22 @@ const LexChatbot = ({ onTaskCreated }) => {
                 onChange={(e) => setInputMessage(e.target.value)}
                 placeholder="Type a message..."
                 className="flex-grow"
+                disabled={isRecording}
               />
+              <Button
+                type="button"
+                size="icon"
+                className={`${
+                  isRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-indigo-500 hover:bg-indigo-600'
+                }`}
+                onClick={isRecording ? stopRecording : startRecording}
+              >
+                {isRecording ? (
+                  <MicOff size={20} className="text-white" />
+                ) : (
+                  <Mic size={20} className="text-white" />
+                )}
+              </Button>
               <Button type="submit" size="icon" className="bg-indigo-500 hover:bg-indigo-600">
                 <Send size={20} className="text-white" />
               </Button>
