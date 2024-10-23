@@ -126,12 +126,13 @@ const Todo = () => {
       await client.graphql({ 
         query: deleteTaskMutation,
         variables: {
-          input: task.id,
-          _version: task._version 
+          input: {
+            id: task.id
+          }
         },
-      authMode: 'userPool'
-    });
-      fetchTasks(); // Refresh the task list
+        authMode: 'userPool'
+      });
+      fetchTasks();
     } catch (err) {
       console.error('Error deleting task:', err);
     }
@@ -343,7 +344,7 @@ const Todo = () => {
                   <Button 
                     variant="ghost"
                     size="icon"
-                    onClick={() => deleteTask(task.id, task._version)}
+                    onClick={() => deleteTask(task)}
                     className="text-red-500 hover:text-red-600"
                   >
                     <Trash2 size={20} />

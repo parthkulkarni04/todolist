@@ -11,12 +11,12 @@ type EagerTask = {
     identifier: ManagedIdentifier<Task, 'id'>;
   };
   readonly id: string;
-  readonly text: string;
-  readonly category: string;
+  readonly text?: string | null;
+  readonly category?: string | null;
   readonly dueDate?: string | null;
-  readonly priority: string;
-  readonly completed: boolean;
-  readonly owner: string;
+  readonly priority?: string | null;
+  readonly completed?: boolean | null;
+  readonly owner?: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -26,12 +26,12 @@ type LazyTask = {
     identifier: ManagedIdentifier<Task, 'id'>;
   };
   readonly id: string;
-  readonly text: string;
-  readonly category: string;
+  readonly text?: string | null;
+  readonly category?: string | null;
   readonly dueDate?: string | null;
-  readonly priority: string;
-  readonly completed: boolean;
-  readonly owner: string;
+  readonly priority?: string | null;
+  readonly completed?: boolean | null;
+  readonly owner?: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
